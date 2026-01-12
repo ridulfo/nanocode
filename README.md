@@ -20,6 +20,13 @@ export ANTHROPIC_API_KEY="your-key"
 python nanocode.py
 ```
 
+Or use [OpenRouter](https://openrouter.ai):
+
+```bash
+export OPENROUTER_API_KEY="your-key"
+python nanocode.py
+```
+
 ## Commands
 
 - `/c` - Clear conversation
