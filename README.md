@@ -33,7 +33,7 @@ To use a different model:
 
 ```bash
 export OPENROUTER_API_KEY="your-key"
-export MODEL="openai/gpt-4o"
+export MODEL="openai/gpt-5.2"
 python nanocode.py
 ```
 
