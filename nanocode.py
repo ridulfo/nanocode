@@ -3,9 +3,9 @@
 
 import glob as globlib, json, os, re, subprocess, urllib.request
 
-_OR = os.environ.get("OPENROUTER_API_KEY")
-API_URL = "https://openrouter.ai/api/v1/messages" if _OR else "https://api.anthropic.com/v1/messages"
-MODEL = "anthropic/claude-opus-4.5" if _OR else "claude-opus-4-5"
+OPENROUTER_KEY = os.environ.get("OPENROUTER_API_KEY")
+API_URL = "https://openrouter.ai/api/v1/messages" if OPENROUTER_KEY else "https://api.anthropic.com/v1/messages"
+MODEL = os.environ.get("MODEL", "anthropic/claude-opus-4.5" if OPENROUTER_KEY else "claude-opus-4-5")
 
 # ANSI colors
 RESET, BOLD, DIM = "\033[0m", "\033[1m", "\033[2m"
@@ -182,7 +182,7 @@ def call_api(messages, system_prompt):
         headers={
             "Content-Type": "application/json",
             "anthropic-version": "2023-06-01",
-            **({"Authorization": f"Bearer {_OR}"} if _OR else {"x-api-key": os.environ.get("ANTHROPIC_API_KEY", "")}),
+            **({"Authorization": f"Bearer {OPENROUTER_KEY}"} if OPENROUTER_KEY else {"x-api-key": os.environ.get("ANTHROPIC_API_KEY", "")}),
         },
     )
     response = urllib.request.urlopen(request)
@@ -198,7 +198,7 @@ def render_markdown(text):
 
 
 def main():
-    print(f"{BOLD}nanocode{RESET} | {DIM}{MODEL} ({'OpenRouter' if _OR else 'Anthropic'}) | {os.getcwd()}{RESET}\n")
+    print(f"{BOLD}nanocode{RESET} | {DIM}{MODEL} ({'OpenRouter' if OPENROUTER_KEY else 'Anthropic'}) | {os.getcwd()}{RESET}\n")
     messages = []
     system_prompt = f"Concise coding assistant. cwd: {os.getcwd()}"
 
