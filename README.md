@@ -52,6 +52,42 @@ export LLAMA_CPP_URL="http://localhost:8080"
 python nanocode.py
 ```
 
+### Container Mode (Podman/Docker)
+
+Run nanocode in an isolated container (always uses current directory):
+
+```bash
+# Use llama.cpp (default)
+./nanocode-podman
+
+# Specify provider
+./nanocode-podman llama            # llama.cpp at localhost:8080
+./nanocode-podman ollama           # requires OLLAMA_MODEL
+./nanocode-podman openrouter       # requires OPENROUTER_API_KEY
+./nanocode-podman anthropic        # requires ANTHROPIC_API_KEY
+
+# Configure Ollama
+export OLLAMA_MODEL="gpt-oss"
+./nanocode-podman ollama
+
+# Configure git identity
+export GIT_USER_NAME="Your Name"
+export GIT_USER_EMAIL="you@example.com"
+./nanocode-podman llama
+```
+
+**How it works:**
+- Creates a fresh container for each session
+- Mounts your work directory into the container
+- Accesses host's llama.cpp server via network
+- Changes and commits persist to the mounted directory
+- Container auto-removes after exit
+
+**Requirements:**
+- Podman or Docker installed (script auto-detects)
+- llama.cpp server running on host at `http://localhost:8080` (default, or set `LLAMA_CPP_URL` to override)
+- Alternatively, configure `OLLAMA_MODEL` for Ollama, `OPENROUTER_API_KEY` for OpenRouter, or `ANTHROPIC_API_KEY` for Anthropic API
+
 ## Commands
 
 - `/c` - Clear conversation

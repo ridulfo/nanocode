@@ -1,0 +1,99 @@
+#!/usr/bin/env bash
+set -e
+
+# Configuration
+IMAGE_NAME="nanocode:latest"
+PROVIDER="${1:-llama}"
+WORK_DIR="${2:-$(pwd)}"
+
+# Expand ~ in work directory path
+WORK_DIR="${WORK_DIR/#\~/$HOME}"
+
+# Detect container runtime (prefer podman, fallback to docker)
+if command -v podman &> /dev/null; then
+    CONTAINER_CMD="podman"
+elif command -v docker &> /dev/null; then
+    CONTAINER_CMD="docker"
+else
+    echo "Error: Neither podman nor docker found. Please install one of them."
+    exit 1
+fi
+
+# Ensure we're in the nanocode directory for building
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Build image if it doesn't exist
+if ! $CONTAINER_CMD image inspect "$IMAGE_NAME" &>/dev/null; then
+    echo "Building nanocode container image..."
+    $CONTAINER_CMD build -t "$IMAGE_NAME" -f "$SCRIPT_DIR/Containerfile" "$SCRIPT_DIR"
+fi
+
+# Verify work directory exists
+if [ ! -d "$WORK_DIR" ]; then
+    echo "Error: Work directory does not exist: $WORK_DIR"
+    exit 1
+fi
+
+# Default git config if not set
+GIT_USER_NAME="${GIT_USER_NAME:-Nanocode Container Agent}"
+GIT_USER_EMAIL="${GIT_USER_EMAIL:-nanocode@container.local}"
+
+# Configure provider-specific environment
+ENV_VARS=()
+case "$PROVIDER" in
+    ollama)
+        if [ -z "$OLLAMA_MODEL" ]; then
+            echo "Error: OLLAMA_MODEL not set"
+            exit 1
+        fi
+        OLLAMA_API_URL="${OLLAMA_API_URL:-http://localhost:11434/v1/chat/completions}"
+        ENV_VARS+=("-e" "OLLAMA_MODEL=${OLLAMA_MODEL}")
+        ENV_VARS+=("-e" "OLLAMA_API_URL=${OLLAMA_API_URL}")
+        PROVIDER_NAME="Ollama"
+        ;;
+    llama|llamacpp|llama.cpp)
+        LLAMA_CPP_URL="${LLAMA_CPP_URL:-http://localhost:8080}"
+        ENV_VARS+=("-e" "LLAMA_CPP_URL=${LLAMA_CPP_URL}")
+        PROVIDER_NAME="llama.cpp"
+        ;;
+    openrouter|or)
+        if [ -z "$OPENROUTER_API_KEY" ]; then
+            echo "Error: OPENROUTER_API_KEY not set"
+            exit 1
+        fi
+        ENV_VARS+=("-e" "OPENROUTER_API_KEY=${OPENROUTER_API_KEY}")
+        PROVIDER_NAME="OpenRouter"
+        ;;
+    anthropic)
+        if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "Error: ANTHROPIC_API_KEY not set"
+            exit 1
+        fi
+        ENV_VARS+=("-e" "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}")
+        PROVIDER_NAME="Anthropic"
+        ;;
+    *)
+        echo "Error: Unknown provider '$PROVIDER'"
+        echo "Usage: $0 <provider> [work_dir]"
+        echo "Providers: ollama, llama, openrouter, anthropic"
+        echo "Example: OLLAMA_MODEL=gpt-oss $0 ollama ~/dev/project"
+        exit 1
+        ;;
+esac
+
+echo "Starting nanocode in container (using $CONTAINER_CMD)..."
+echo "Provider: $PROVIDER_NAME"
+echo "Work directory: $WORK_DIR"
+echo "Git identity: $GIT_USER_NAME <$GIT_USER_EMAIL>"
+echo "Environment: ${ENV_VARS[*]}"
+echo ""
+
+# Run container with host network access and mounted work directory
+$CONTAINER_CMD run -it --rm \
+    --network host \
+    -v "${WORK_DIR}:/workspace:z" \
+    "${ENV_VARS[@]}" \
+    -e MODEL="${MODEL}" \
+    -e GIT_USER_NAME="${GIT_USER_NAME}" \
+    -e GIT_USER_EMAIL="${GIT_USER_EMAIL}" \
+    "$IMAGE_NAME"
