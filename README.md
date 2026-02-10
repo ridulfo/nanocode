@@ -15,6 +15,8 @@ Built using Claude Code, then used to build itself.
 
 ## Usage
 
+### Anthropic API
+
 ```bash
 export ANTHROPIC_API_KEY="your-key"
 python nanocode.py
@@ -34,6 +36,19 @@ To use a different model:
 ```bash
 export OPENROUTER_API_KEY="your-key"
 export MODEL="openai/gpt-5.2"
+python nanocode.py
+```
+
+### llama.cpp Server
+
+Use a local [llama.cpp](https://github.com/ggerganov/llama.cpp) server:
+
+```bash
+# Start llama.cpp server (in another terminal)
+./llama-server -m model.gguf --port 8080
+
+# Use with nanocode
+export LLAMA_CPP_URL="http://localhost:8080"
 python nanocode.py
 ```
 

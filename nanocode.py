@@ -4,8 +4,27 @@
 import glob as globlib, json, os, re, subprocess, urllib.request
 
 OPENROUTER_KEY = os.environ.get("OPENROUTER_API_KEY")
-API_URL = "https://openrouter.ai/api/v1/messages" if OPENROUTER_KEY else "https://api.anthropic.com/v1/messages"
-MODEL = os.environ.get("MODEL", "anthropic/claude-opus-4.5" if OPENROUTER_KEY else "claude-opus-4-5")
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL")
+OLLAMA_API_URL = os.environ.get("OLLAMA_API_URL", "http://localhost:11434/v1/chat/completions")
+LLAMA_CPP_URL = os.environ.get("LLAMA_CPP_URL")
+
+# Provider detection: Ollama > llama.cpp > OpenRouter > Anthropic
+if OLLAMA_MODEL:
+    PROVIDER = "ollama"
+    API_URL = OLLAMA_API_URL
+    MODEL = OLLAMA_MODEL
+elif LLAMA_CPP_URL:
+    PROVIDER = "llama.cpp"
+    API_URL = f"{LLAMA_CPP_URL.rstrip('/')}/v1/chat/completions"
+    MODEL = os.environ.get("MODEL", "local-model")
+elif OPENROUTER_KEY:
+    PROVIDER = "openrouter"
+    API_URL = "https://openrouter.ai/api/v1/messages"
+    MODEL = os.environ.get("MODEL", "anthropic/claude-opus-4.5")
+else:
+    PROVIDER = "anthropic"
+    API_URL = "https://api.anthropic.com/v1/messages"
+    MODEL = os.environ.get("MODEL", "claude-opus-4-5")
 
 # ANSI colors
 RESET, BOLD, DIM = "\033[0m", "\033[1m", "\033[2m"
@@ -141,6 +160,7 @@ def run_tool(name, args):
 
 
 def make_schema():
+    """Anthropic format tool schema"""
     result = []
     for name, (description, params, _fn) in TOOLS.items():
         properties = {}
@@ -167,7 +187,37 @@ def make_schema():
     return result
 
 
-def call_api(messages, system_prompt):
+def make_schema_openai():
+    """OpenAI function calling format tool schema"""
+    result = []
+    for name, (description, params, _fn) in TOOLS.items():
+        properties = {}
+        required = []
+        for param_name, param_type in params.items():
+            is_optional = param_type.endswith("?")
+            base_type = param_type.rstrip("?")
+            properties[param_name] = {
+                "type": "integer" if base_type == "number" else base_type
+            }
+            if not is_optional:
+                required.append(param_name)
+        result.append({
+            "type": "function",
+            "function": {
+                "name": name,
+                "description": description,
+                "parameters": {
+                    "type": "object",
+                    "properties": properties,
+                    "required": required,
+                }
+            }
+        })
+    return result
+
+
+def call_api_anthropic(messages, system_prompt):
+    """Call Anthropic or OpenRouter API using Anthropic format"""
     request = urllib.request.Request(
         API_URL,
         data=json.dumps(
@@ -189,6 +239,98 @@ def call_api(messages, system_prompt):
     return json.loads(response.read())
 
 
+def call_api_openai_compatible(messages, system_prompt):
+    """Call Ollama or llama.cpp API with OpenAI format conversion"""
+    # Convert Anthropic messages to OpenAI format
+    openai_messages = [{"role": "system", "content": system_prompt}]
+
+    for msg in messages:
+        if msg["role"] == "user":
+            content = msg["content"]
+            if isinstance(content, str):
+                openai_messages.append({"role": "user", "content": content})
+            elif isinstance(content, list):
+                # Handle tool_result blocks
+                for block in content:
+                    if block["type"] == "tool_result":
+                        openai_messages.append({
+                            "role": "tool",
+                            "tool_call_id": block["tool_use_id"],
+                            "content": block["content"]
+                        })
+        elif msg["role"] == "assistant":
+            content_blocks = msg["content"]
+            text_parts = []
+            tool_calls = []
+
+            for block in content_blocks:
+                if block["type"] == "text":
+                    text_parts.append(block["text"])
+                elif block["type"] == "tool_use":
+                    tool_calls.append({
+                        "id": block["id"],
+                        "type": "function",
+                        "function": {
+                            "name": block["name"],
+                            "arguments": json.dumps(block["input"])
+                        }
+                    })
+
+            openai_msg = {"role": "assistant"}
+            if text_parts:
+                openai_msg["content"] = "\n".join(text_parts)
+            if tool_calls:
+                openai_msg["tool_calls"] = tool_calls
+            openai_messages.append(openai_msg)
+
+    # Make API call
+    request = urllib.request.Request(
+        API_URL,
+        data=json.dumps({
+            "model": MODEL,
+            "messages": openai_messages,
+            "tools": make_schema_openai(),
+            "max_tokens": 8192,
+        }).encode(),
+        headers={"Content-Type": "application/json"},
+    )
+
+    try:
+        response = urllib.request.urlopen(request)
+    except urllib.error.URLError as e:
+        raise Exception(f"Cannot reach {PROVIDER} at {API_URL}. Is the server running? ({e})")
+
+    openai_response = json.loads(response.read())
+
+    # Convert OpenAI response back to Anthropic format
+    choice = openai_response["choices"][0]
+    message = choice["message"]
+
+    content_blocks = []
+
+    # Add text content if present
+    if message.get("content"):
+        content_blocks.append({"type": "text", "text": message["content"]})
+
+    # Add tool calls if present
+    if message.get("tool_calls"):
+        for tool_call in message["tool_calls"]:
+            content_blocks.append({
+                "type": "tool_use",
+                "id": tool_call["id"],
+                "name": tool_call["function"]["name"],
+                "input": json.loads(tool_call["function"]["arguments"])
+            })
+
+    return {"content": content_blocks}
+
+
+def call_api(messages, system_prompt):
+    """Route to appropriate API based on provider"""
+    if PROVIDER in ("ollama", "llama.cpp"):
+        return call_api_openai_compatible(messages, system_prompt)
+    else:
+        return call_api_anthropic(messages, system_prompt)
 def separator():
     return f"{DIM}{'─' * min(os.get_terminal_size().columns, 80)}{RESET}"
 
@@ -198,7 +340,7 @@ def render_markdown(text):
 
 
 def main():
-    print(f"{BOLD}nanocode{RESET} | {DIM}{MODEL} ({'OpenRouter' if OPENROUTER_KEY else 'Anthropic'}) | {os.getcwd()}{RESET}\n")
+    print(f"{BOLD}nanocode{RESET} | {DIM}{MODEL} ({PROVIDER.capitalize()}) | {os.getcwd()}{RESET}\n")
     messages = []
     system_prompt = f"Concise coding assistant. cwd: {os.getcwd()}"
 
