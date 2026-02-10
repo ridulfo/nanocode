@@ -130,7 +130,7 @@ TOOLS = {
         write,
     ),
     "edit": (
-        "Replace old with new in file (old must be unique unless all=true)",
+        "Replace old with new in file. IMPORTANT: old must be unique - include surrounding lines as context if the target appears multiple times. Use all=true only to replace ALL occurrences.",
         {"path": "string", "old": "string", "new": "string", "all": "boolean?"},
         edit,
     ),
