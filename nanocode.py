@@ -43,11 +43,24 @@ def write(args):
 def edit(args):
     text = open(args["path"]).read()
     old, new = args["old"], args["new"]
+
+    # Detect common mistakes
+    if not old or not isinstance(old, str):
+        return f"error: 'old' must be a non-empty string, got: {type(old).__name__}"
+
+    # Check if old contains line number formatting from read tool
+    if re.match(r'^\s*\d+\|', old) or re.search(r'\n\s*\d+\|', old):
+        return "error: 'old' contains line numbers (like '  123| '). Line numbers are only for display - copy the actual text content WITHOUT the line number prefix."
+
     if old not in text:
-        return "error: old_string not found"
+        # Show helpful context
+        preview = old[:80] + "..." if len(old) > 80 else old
+        return f"error: old_string not found in file. Searched for: {repr(preview)}\nTip: Copy the EXACT text from the file (read it first if needed). Don't include line numbers."
+
     count = text.count(old)
     if not args.get("all") and count > 1:
-        return f"error: old_string appears {count} times, must be unique (use all=true)"
+        return f"error: old_string appears {count} times, must be unique. Add more surrounding lines to make it unique, or use all=true to replace all occurrences."
+
     replacement = (
         text.replace(old, new) if args.get("all") else text.replace(old, new, 1)
     )
@@ -108,7 +121,7 @@ def bash(args):
 
 TOOLS = {
     "read": (
-        "Read file with line numbers (file path, not directory)",
+        "Read file contents. Returns text with line numbers for reference (e.g., '  42| code'). File path required, not directory.",
         {"path": "string", "offset": "number?", "limit": "number?"},
         read,
     ),
@@ -118,7 +131,7 @@ TOOLS = {
         write,
     ),
     "edit": (
-        "Replace old with new in file. IMPORTANT: old must be unique - include surrounding lines as context if the target appears multiple times. Use all=true only to replace ALL occurrences.",
+        "Replace old with new in file. CRITICAL: 'old' must be EXACT text from file (NOT the line-numbered output from read - strip '  42| ' prefixes). Must be unique unless using all=true. Include surrounding lines if needed for uniqueness.",
         {"path": "string", "old": "string", "new": "string", "all": "boolean?"},
         edit,
     ),
@@ -274,6 +287,13 @@ def main():
     print(f"{BOLD}nanocode{RESET} | {DIM}{MODEL} (Ollama) | {os.getcwd()}{RESET}\n")
     messages = []
     system_prompt = f"""You are a coding agent in a terminal-based assistant. cwd: {os.getcwd()}. Be concise, direct, and friendly. Keep working autonomously using the available tools until the task is fully resolved—do not guess or make up answers. Always read files before modifying them. When exploring the codebase, prefer grep and glob over bash. Briefly tell the user what you're about to do before each action.
+
+CRITICAL - Using the edit tool correctly:
+1. The 'read' tool shows line numbers like "  42| content" - these are DISPLAY ONLY
+2. When using 'edit', the 'old' parameter must contain ONLY the actual file text
+3. NEVER include line number prefixes (like "  42| ") in the 'old' parameter
+4. Copy the exact text after the line number prefix when preparing edit operations
+5. If edit fails, read the file again and copy the exact text more carefully
 
 Fix problems at root causes, not with surface patches. Keep changes minimal, focused, and consistent with existing code style. Do not add comments, type annotations, refactors, or improvements beyond what was asked. If an approach fails, try an alternative instead of repeating the same action. Do not commit or push to git unless explicitly asked. When tests or build commands exist, use them to verify your work."""
 
