@@ -1,30 +1,16 @@
 #!/usr/bin/env python3
-"""nanocode - minimal claude code alternative"""
+"""nanocode - minimal coding agent using Ollama"""
 
-import glob as globlib, json, os, re, subprocess, urllib.request
+import glob as globlib
+import json
+import os
+import re
+import subprocess
+import urllib.request
 
-OPENROUTER_KEY = os.environ.get("OPENROUTER_API_KEY")
-OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL")
-OLLAMA_API_URL = os.environ.get("OLLAMA_API_URL", "http://localhost:11434/v1/chat/completions")
-LLAMA_CPP_URL = os.environ.get("LLAMA_CPP_URL")
-
-# Provider detection: Ollama > llama.cpp > OpenRouter > Anthropic
-if OLLAMA_MODEL:
-    PROVIDER = "ollama"
-    API_URL = OLLAMA_API_URL
-    MODEL = OLLAMA_MODEL
-elif LLAMA_CPP_URL:
-    PROVIDER = "llama.cpp"
-    API_URL = f"{LLAMA_CPP_URL.rstrip('/')}/v1/chat/completions"
-    MODEL = os.environ.get("MODEL", "local-model")
-elif OPENROUTER_KEY:
-    PROVIDER = "openrouter"
-    API_URL = "https://openrouter.ai/api/v1/messages"
-    MODEL = os.environ.get("MODEL", "anthropic/claude-opus-4.5")
-else:
-    PROVIDER = "anthropic"
-    API_URL = "https://api.anthropic.com/v1/messages"
-    MODEL = os.environ.get("MODEL", "claude-opus-4-5")
+MODEL = os.environ.get("OLLAMA_MODEL", "qwen3")
+OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
+API_URL = OLLAMA_URL.rstrip("/") + "/v1/chat/completions"
 
 # ANSI colors
 RESET, BOLD, DIM = "\033[0m", "\033[1m", "\033[2m"
@@ -96,9 +82,11 @@ def grep(args):
 
 def bash(args):
     proc = subprocess.Popen(
-        args["cmd"], shell=True,
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-        text=True
+        args["cmd"],
+        shell=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
     )
     output_lines = []
     try:
@@ -160,7 +148,6 @@ def run_tool(name, args):
 
 
 def make_schema():
-    """Anthropic format tool schema"""
     result = []
     for name, (description, params, _fn) in TOOLS.items():
         properties = {}
@@ -175,162 +162,42 @@ def make_schema():
                 required.append(param_name)
         result.append(
             {
-                "name": name,
-                "description": description,
-                "input_schema": {
-                    "type": "object",
-                    "properties": properties,
-                    "required": required,
+                "type": "function",
+                "function": {
+                    "name": name,
+                    "description": description,
+                    "parameters": {
+                        "type": "object",
+                        "properties": properties,
+                        "required": required,
+                    },
                 },
             }
         )
     return result
 
 
-def make_schema_openai():
-    """OpenAI function calling format tool schema"""
-    result = []
-    for name, (description, params, _fn) in TOOLS.items():
-        properties = {}
-        required = []
-        for param_name, param_type in params.items():
-            is_optional = param_type.endswith("?")
-            base_type = param_type.rstrip("?")
-            properties[param_name] = {
-                "type": "integer" if base_type == "number" else base_type
-            }
-            if not is_optional:
-                required.append(param_name)
-        result.append({
-            "type": "function",
-            "function": {
-                "name": name,
-                "description": description,
-                "parameters": {
-                    "type": "object",
-                    "properties": properties,
-                    "required": required,
-                }
-            }
-        })
-    return result
-
-
-def call_api_anthropic(messages, system_prompt):
-    """Call Anthropic or OpenRouter API using Anthropic format"""
+def call_api(messages, system_prompt):
     request = urllib.request.Request(
         API_URL,
         data=json.dumps(
             {
                 "model": MODEL,
-                "max_tokens": 8192,
-                "system": system_prompt,
-                "messages": messages,
+                "messages": [{"role": "system", "content": system_prompt}] + messages,
                 "tools": make_schema(),
             }
         ).encode(),
-        headers={
-            "Content-Type": "application/json",
-            "anthropic-version": "2023-06-01",
-            **({"Authorization": f"Bearer {OPENROUTER_KEY}"} if OPENROUTER_KEY else {"x-api-key": os.environ.get("ANTHROPIC_API_KEY", "")}),
-        },
-    )
-    response = urllib.request.urlopen(request)
-    return json.loads(response.read())
-
-
-def call_api_openai_compatible(messages, system_prompt):
-    """Call Ollama or llama.cpp API with OpenAI format conversion"""
-    # Convert Anthropic messages to OpenAI format
-    openai_messages = [{"role": "system", "content": system_prompt}]
-
-    for msg in messages:
-        if msg["role"] == "user":
-            content = msg["content"]
-            if isinstance(content, str):
-                openai_messages.append({"role": "user", "content": content})
-            elif isinstance(content, list):
-                # Handle tool_result blocks
-                for block in content:
-                    if block["type"] == "tool_result":
-                        openai_messages.append({
-                            "role": "tool",
-                            "tool_call_id": block["tool_use_id"],
-                            "content": block["content"]
-                        })
-        elif msg["role"] == "assistant":
-            content_blocks = msg["content"]
-            text_parts = []
-            tool_calls = []
-
-            for block in content_blocks:
-                if block["type"] == "text":
-                    text_parts.append(block["text"])
-                elif block["type"] == "tool_use":
-                    tool_calls.append({
-                        "id": block["id"],
-                        "type": "function",
-                        "function": {
-                            "name": block["name"],
-                            "arguments": json.dumps(block["input"])
-                        }
-                    })
-
-            openai_msg = {"role": "assistant"}
-            if text_parts:
-                openai_msg["content"] = "\n".join(text_parts)
-            if tool_calls:
-                openai_msg["tool_calls"] = tool_calls
-            openai_messages.append(openai_msg)
-
-    # Make API call
-    request = urllib.request.Request(
-        API_URL,
-        data=json.dumps({
-            "model": MODEL,
-            "messages": openai_messages,
-            "tools": make_schema_openai(),
-            "max_tokens": 8192,
-        }).encode(),
         headers={"Content-Type": "application/json"},
     )
-
     try:
         response = urllib.request.urlopen(request)
     except urllib.error.URLError as e:
-        raise Exception(f"Cannot reach {PROVIDER} at {API_URL}. Is the server running? ({e})")
-
-    openai_response = json.loads(response.read())
-
-    # Convert OpenAI response back to Anthropic format
-    choice = openai_response["choices"][0]
-    message = choice["message"]
-
-    content_blocks = []
-
-    # Add text content if present
-    if message.get("content"):
-        content_blocks.append({"type": "text", "text": message["content"]})
-
-    # Add tool calls if present
-    if message.get("tool_calls"):
-        for tool_call in message["tool_calls"]:
-            content_blocks.append({
-                "type": "tool_use",
-                "id": tool_call["id"],
-                "name": tool_call["function"]["name"],
-                "input": json.loads(tool_call["function"]["arguments"])
-            })
-
-    return {"content": content_blocks}
+        raise Exception(
+            f"Cannot reach Ollama at {OLLAMA_URL}. Is the server running? ({e})"
+        )
+    return json.loads(response.read())["choices"][0]["message"]
 
 
-def call_api(messages, system_prompt):
-    """Route to appropriate API based on provider"""
-    if PROVIDER in ("ollama", "llama.cpp"):
-        return call_api_openai_compatible(messages, system_prompt)
-    else:
-        return call_api_anthropic(messages, system_prompt)
 def separator():
     return f"{DIM}{'─' * min(os.get_terminal_size().columns, 80)}{RESET}"
 
@@ -340,7 +207,7 @@ def render_markdown(text):
 
 
 def main():
-    print(f"{BOLD}nanocode{RESET} | {DIM}{MODEL} ({PROVIDER.capitalize()}) | {os.getcwd()}{RESET}\n")
+    print(f"{BOLD}nanocode{RESET} | {DIM}{MODEL} (Ollama) | {os.getcwd()}{RESET}\n")
     messages = []
     system_prompt = f"""You are a coding agent in a terminal-based assistant. cwd: {os.getcwd()}. Be concise, direct, and friendly. Keep working autonomously using the available tools until the task is fully resolved—do not guess or make up answers. Always read files before modifying them. When exploring the codebase, prefer grep and glob over bash. Briefly tell the user what you're about to do before each action.
 
@@ -364,44 +231,48 @@ Fix problems at root causes, not with surface patches. Keep changes minimal, foc
 
             # agentic loop: keep calling API until no more tool calls
             while True:
-                response = call_api(messages, system_prompt)
-                content_blocks = response.get("content", [])
+                msg = call_api(messages, system_prompt)
                 tool_results = []
 
-                for block in content_blocks:
-                    if block["type"] == "text":
-                        print(f"\n{CYAN}⏺{RESET} {render_markdown(block['text'])}")
+                if msg.get("content"):
+                    print(f"\n{CYAN}⏺{RESET} {render_markdown(msg['content'])}")
 
-                    if block["type"] == "tool_use":
-                        tool_name = block["name"]
-                        tool_args = block["input"]
-                        arg_preview = str(list(tool_args.values())[0])[:50]
-                        print(
-                            f"\n{GREEN}⏺ {tool_name.capitalize()}{RESET}({DIM}{arg_preview}{RESET})"
-                        )
+                for tc in msg.get("tool_calls", []):
+                    tool_name = tc["function"]["name"]
+                    tool_args = json.loads(tc["function"]["arguments"])
+                    arg_preview = str(list(tool_args.values())[0])[:50]
+                    print(
+                        f"\n{GREEN}⏺ {tool_name.capitalize()}{RESET}({DIM}{arg_preview}{RESET})"
+                    )
 
-                        result = run_tool(tool_name, tool_args)
-                        result_lines = result.split("\n")
-                        preview = result_lines[0][:60]
-                        if len(result_lines) > 1:
-                            preview += f" ... +{len(result_lines) - 1} lines"
-                        elif len(result_lines[0]) > 60:
-                            preview += "..."
-                        print(f"  {DIM}⎿  {preview}{RESET}")
+                    result = run_tool(tool_name, tool_args)
+                    result_lines = result.split("\n")
+                    preview = result_lines[0][:60]
+                    if len(result_lines) > 1:
+                        preview += f" ... +{len(result_lines) - 1} lines"
+                    elif len(result_lines[0]) > 60:
+                        preview += "..."
+                    print(f"  {DIM}⎿  {preview}{RESET}")
 
-                        tool_results.append(
-                            {
-                                "type": "tool_result",
-                                "tool_use_id": block["id"],
-                                "content": result,
-                            }
-                        )
+                    tool_results.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": tc["id"],
+                            "content": result,
+                        }
+                    )
 
-                messages.append({"role": "assistant", "content": content_blocks})
+                # Store assistant message
+                assistant_msg = {"role": "assistant"}
+                if msg.get("content"):
+                    assistant_msg["content"] = msg["content"]
+                if msg.get("tool_calls"):
+                    assistant_msg["tool_calls"] = msg["tool_calls"]
+                messages.append(assistant_msg)
 
                 if not tool_results:
                     break
-                messages.append({"role": "user", "content": tool_results})
+                messages.extend(tool_results)
 
             print()
 

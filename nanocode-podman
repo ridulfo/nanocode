@@ -3,8 +3,7 @@ set -e
 
 # Configuration
 IMAGE_NAME="nanocode:latest"
-PROVIDER="${1:-llama}"
-WORK_DIR="${2:-$(pwd)}"
+WORK_DIR="${1:-$(pwd)}"
 
 # Expand ~ in work directory path
 WORK_DIR="${WORK_DIR/#\~/$HOME}"
@@ -38,62 +37,23 @@ fi
 GIT_USER_NAME="${GIT_USER_NAME:-Nanocode Container Agent}"
 GIT_USER_EMAIL="${GIT_USER_EMAIL:-nanocode@container.local}"
 
-# Configure provider-specific environment
-ENV_VARS=()
-case "$PROVIDER" in
-    ollama)
-        if [ -z "$OLLAMA_MODEL" ]; then
-            echo "Error: OLLAMA_MODEL not set"
-            exit 1
-        fi
-        OLLAMA_API_URL="${OLLAMA_API_URL:-http://localhost:11434/v1/chat/completions}"
-        ENV_VARS+=("-e" "OLLAMA_MODEL=${OLLAMA_MODEL}")
-        ENV_VARS+=("-e" "OLLAMA_API_URL=${OLLAMA_API_URL}")
-        PROVIDER_NAME="Ollama"
-        ;;
-    llama|llamacpp|llama.cpp)
-        LLAMA_CPP_URL="${LLAMA_CPP_URL:-http://localhost:8080}"
-        ENV_VARS+=("-e" "LLAMA_CPP_URL=${LLAMA_CPP_URL}")
-        PROVIDER_NAME="llama.cpp"
-        ;;
-    openrouter|or)
-        if [ -z "$OPENROUTER_API_KEY" ]; then
-            echo "Error: OPENROUTER_API_KEY not set"
-            exit 1
-        fi
-        ENV_VARS+=("-e" "OPENROUTER_API_KEY=${OPENROUTER_API_KEY}")
-        PROVIDER_NAME="OpenRouter"
-        ;;
-    anthropic)
-        if [ -z "$ANTHROPIC_API_KEY" ]; then
-            echo "Error: ANTHROPIC_API_KEY not set"
-            exit 1
-        fi
-        ENV_VARS+=("-e" "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}")
-        PROVIDER_NAME="Anthropic"
-        ;;
-    *)
-        echo "Error: Unknown provider '$PROVIDER'"
-        echo "Usage: $0 <provider> [work_dir]"
-        echo "Providers: ollama, llama, openrouter, anthropic"
-        echo "Example: OLLAMA_MODEL=gpt-oss $0 ollama ~/dev/project"
-        exit 1
-        ;;
-esac
+# Ollama configuration
+OLLAMA_MODEL="${OLLAMA_MODEL:-qwen3}"
+OLLAMA_URL="${OLLAMA_URL:-http://localhost:11434}"
 
 echo "Starting nanocode in container (using $CONTAINER_CMD)..."
-echo "Provider: $PROVIDER_NAME"
+echo "Model: $OLLAMA_MODEL"
+echo "Ollama URL: $OLLAMA_URL"
 echo "Work directory: $WORK_DIR"
 echo "Git identity: $GIT_USER_NAME <$GIT_USER_EMAIL>"
-echo "Environment: ${ENV_VARS[*]}"
 echo ""
 
 # Run container with host network access and mounted work directory
 $CONTAINER_CMD run -it --rm \
     --network host \
     -v "${WORK_DIR}:/workspace:z" \
-    "${ENV_VARS[@]}" \
-    -e MODEL="${MODEL}" \
-    -e GIT_USER_NAME="${GIT_USER_NAME}" \
-    -e GIT_USER_EMAIL="${GIT_USER_EMAIL}" \
+    -e "OLLAMA_MODEL=${OLLAMA_MODEL}" \
+    -e "OLLAMA_URL=${OLLAMA_URL}" \
+    -e "GIT_USER_NAME=${GIT_USER_NAME}" \
+    -e "GIT_USER_EMAIL=${GIT_USER_EMAIL}" \
     "$IMAGE_NAME"
