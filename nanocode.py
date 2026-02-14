@@ -10,7 +10,7 @@ import urllib.request
 
 MODEL = os.environ.get("OLLAMA_MODEL", "qwen3")
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
-API_URL = OLLAMA_URL.rstrip("/") + "/v1/chat/completions"
+API_URL = OLLAMA_URL.rstrip("/") + "/api/chat"
 
 # ANSI colors
 RESET, BOLD, DIM = "\033[0m", "\033[1m", "\033[2m"
@@ -185,6 +185,7 @@ def call_api(messages, system_prompt):
                 "model": MODEL,
                 "messages": [{"role": "system", "content": system_prompt}] + messages,
                 "tools": make_schema(),
+                "stream": True,
             }
         ).encode(),
         headers={"Content-Type": "application/json"},
@@ -195,7 +196,70 @@ def call_api(messages, system_prompt):
         raise Exception(
             f"Cannot reach Ollama at {OLLAMA_URL}. Is the server running? ({e})"
         )
-    return json.loads(response.read())["choices"][0]["message"]
+
+    # Stream response
+    content_chunks = []
+    tool_calls = []
+    usage = {}
+    thinking_count = 0
+    output_count = 0
+    printed_header = False
+    in_thinking = False
+
+    for line in response:
+        line = line.decode("utf-8").strip()
+        if not line:
+            continue
+
+        try:
+            chunk = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+
+        # Check if we're in thinking mode
+        msg = chunk.get("message", {})
+
+        # Thinking tokens (before actual response)
+        if msg.get("thinking"):
+            thinking_count += 1
+            in_thinking = True
+            print(f"\r{DIM}Thinking... ({thinking_count} tokens){RESET}", end="", flush=True)
+
+        # Accumulate and print content as it streams
+        elif msg.get("content"):
+            text = msg["content"]
+            content_chunks.append(text)
+            output_count += 1
+
+            if not printed_header:
+                # Clear "thinking" message
+                if in_thinking:
+                    print(f"\r{' ' * 40}\r", end="", flush=True)
+                print(f"\n{CYAN}⏺{RESET} ", end="", flush=True)
+                printed_header = True
+
+            print(render_markdown(text), end="", flush=True)
+
+        # Collect tool calls
+        if chunk.get("message", {}).get("tool_calls"):
+            tool_calls = chunk["message"]["tool_calls"]
+
+        # Final chunk has usage info
+        if chunk.get("done"):
+            usage = {
+                "prompt_tokens": chunk.get("prompt_eval_count", 0),
+                "completion_tokens": chunk.get("eval_count", 0),
+                "eval_duration": chunk.get("eval_duration", 0),
+                "total_duration": chunk.get("total_duration", 0),
+            }
+
+    msg = {}
+    if content_chunks:
+        msg["content"] = "".join(content_chunks)
+    if tool_calls:
+        msg["tool_calls"] = tool_calls
+
+    return {"message": msg, "usage": usage}
 
 
 def separator():
@@ -231,16 +295,22 @@ Fix problems at root causes, not with surface patches. Keep changes minimal, foc
 
             # agentic loop: keep calling API until no more tool calls
             while True:
-                msg = call_api(messages, system_prompt)
+                response = call_api(messages, system_prompt)
+                assistant_msg = response["message"]
+                usage = response.get("usage")
                 tool_results = []
 
-                if msg.get("content"):
-                    print(f"\n{CYAN}⏺{RESET} {render_markdown(msg['content'])}")
+                # Content already printed during streaming
+                if usage:
+                    total_tokens = usage['prompt_tokens'] + usage['completion_tokens']
+                    print(f" {DIM}[{total_tokens} tokens]{RESET}", end="", flush=True)
 
-                for tc in msg.get("tool_calls", []):
+                for tc in assistant_msg.get("tool_calls", []):
                     tool_name = tc["function"]["name"]
-                    tool_args = json.loads(tc["function"]["arguments"])
-                    arg_preview = str(list(tool_args.values())[0])[:50]
+                    tool_args = tc["function"]["arguments"]
+                    if isinstance(tool_args, str):
+                        tool_args = json.loads(tool_args)
+                    arg_preview = str(list(tool_args.values())[0])[:50] if tool_args else ""
                     print(
                         f"\n{GREEN}⏺ {tool_name.capitalize()}{RESET}({DIM}{arg_preview}{RESET})"
                     )
@@ -263,12 +333,12 @@ Fix problems at root causes, not with surface patches. Keep changes minimal, foc
                     )
 
                 # Store assistant message
-                assistant_msg = {"role": "assistant"}
-                if msg.get("content"):
-                    assistant_msg["content"] = msg["content"]
-                if msg.get("tool_calls"):
-                    assistant_msg["tool_calls"] = msg["tool_calls"]
-                messages.append(assistant_msg)
+                assistant_msg_full = {"role": "assistant"}
+                if assistant_msg.get("content"):
+                    assistant_msg_full["content"] = assistant_msg["content"]
+                if assistant_msg.get("tool_calls"):
+                    assistant_msg_full["tool_calls"] = assistant_msg["tool_calls"]
+                messages.append(assistant_msg_full)
 
                 if not tool_results:
                     break
