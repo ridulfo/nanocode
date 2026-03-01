@@ -143,7 +143,10 @@ TOOLS = {
 
 def run_tool(name, args):
     try:
-        return TOOLS[name][2](args)
+        result = TOOLS[name][2](args)
+        if len(result) > 10000:
+            return f"warning: tool call '{name}' returned too much text ({len(result)} characters, max 10000). Aborting to prevent overwhelming the agent."
+        return result
     except Exception as err:
         return f"error: {err}"
 
@@ -239,10 +242,11 @@ Fix problems at root causes, not with surface patches. Keep changes minimal, foc
                         }
                     )
 
-                # Store assistant message
-                messages.append({"role": "assistant", **{
-                    k: assistant_msg[k] for k in ("content", "tool_calls") if assistant_msg.get(k)
-                }})
+                # Store assistant message (content must always be present for llama.cpp)
+                msg = {"role": "assistant", "content": assistant_msg.get("content") or ""}
+                if assistant_msg.get("tool_calls"):
+                    msg["tool_calls"] = assistant_msg["tool_calls"]
+                messages.append(msg)
 
                 if not tool_results:
                     break
