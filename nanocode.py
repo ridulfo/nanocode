@@ -96,6 +96,9 @@ def bash(args):
                 print(f"  {DIM}│ {line.rstrip()}{RESET}", flush=True)
                 output_lines.append(line)
         proc.wait(timeout=30)
+    except KeyboardInterrupt:
+        proc.kill()
+        return "".join(output_lines).strip() or "(interrupted)"
     except subprocess.TimeoutExpired:
         proc.kill()
         output_lines.append("\n(timed out after 30s)")
@@ -198,7 +201,11 @@ Fix problems at root causes, not with surface patches. Keep changes minimal, foc
 
             # agentic loop: keep calling API until no more tool calls
             while True:
-                response = provider.call_api(messages, system_prompt, tools_schema)
+                try:
+                    response = provider.call_api(messages, system_prompt, tools_schema)
+                except KeyboardInterrupt:
+                    print(f"\n{YELLOW}⏺ Interrupted{RESET}")
+                    break
                 assistant_msg = response["message"]
                 usage = response.get("usage")
                 tool_results = []
