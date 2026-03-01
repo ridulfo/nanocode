@@ -37,13 +37,15 @@ fi
 GIT_USER_NAME="${GIT_USER_NAME:-Nanocode Container Agent}"
 GIT_USER_EMAIL="${GIT_USER_EMAIL:-nanocode@container.local}"
 
-# Ollama configuration
+# Provider configuration
+PROVIDER="${PROVIDER:-ollama}"
 OLLAMA_MODEL="${OLLAMA_MODEL:-qwen3}"
 OLLAMA_URL="${OLLAMA_URL:-http://localhost:11434}"
+LLAMACPP_MODEL="${LLAMACPP_MODEL:-default}"
+LLAMACPP_URL="${LLAMACPP_URL:-http://localhost:8080}"
 
 echo "Starting nanocode in container (using $CONTAINER_CMD)..."
-echo "Model: $OLLAMA_MODEL"
-echo "Ollama URL: $OLLAMA_URL"
+echo "Provider: $PROVIDER"
 echo "Work directory: $WORK_DIR"
 echo "Git identity: $GIT_USER_NAME <$GIT_USER_EMAIL>"
 echo ""
@@ -52,8 +54,11 @@ echo ""
 $CONTAINER_CMD run -it --rm \
     --network host \
     -v "${WORK_DIR}:/workspace:z" \
+    -e "PROVIDER=${PROVIDER}" \
     -e "OLLAMA_MODEL=${OLLAMA_MODEL}" \
     -e "OLLAMA_URL=${OLLAMA_URL}" \
+    -e "LLAMACPP_MODEL=${LLAMACPP_MODEL}" \
+    -e "LLAMACPP_URL=${LLAMACPP_URL}" \
     -e "GIT_USER_NAME=${GIT_USER_NAME}" \
     -e "GIT_USER_EMAIL=${GIT_USER_EMAIL}" \
     "$IMAGE_NAME"

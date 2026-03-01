@@ -6,7 +6,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy nanocode into the container
-COPY nanocode.py /usr/local/bin/nanocode.py
+COPY nanocode.py providers.py /usr/local/bin/
 RUN chmod +x /usr/local/bin/nanocode.py
 
 # Set working directory
