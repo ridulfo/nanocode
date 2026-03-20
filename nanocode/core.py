@@ -7,8 +7,8 @@ import os
 import re
 import subprocess
 
-from providers import get_provider
-from providers import RESET, BOLD, DIM, BLUE, CYAN, GREEN, YELLOW, RED
+from .providers import get_provider
+from .providers import RESET, BOLD, DIM, BLUE, CYAN, GREEN, YELLOW, RED
 
 
 # --- Tool implementations ---

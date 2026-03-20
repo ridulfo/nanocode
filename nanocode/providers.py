@@ -32,7 +32,7 @@ class Provider(ABC):
 class OllamaProvider(Provider):
     def __init__(self):
         self.model = os.environ.get("OLLAMA_MODEL", "qwen3")
-        base_url = os.environ.get("OLLAMA_URL", "http://localhost:11434")
+        base_url = os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434")
         self._base_url = base_url
         self._api_url = base_url.rstrip("/") + "/api/chat"
 
@@ -111,6 +111,7 @@ class LlamaCppProvider(Provider):
         base_url = os.environ.get("LLAMACPP_URL", "http://localhost:8080")
         self._base_url = base_url
         self._api_url = base_url.rstrip("/") + "/v1/chat/completions"
+        print(f"DEBUG: LlamaCppProvider initialized - model: {self.model}, URL: {self._api_url}")
 
     @property
     def label(self):
