@@ -1,12 +1,12 @@
-FROM python:3-slim
+FROM python:3.13-slim
 
 # Install git for repository operations
 RUN apt-get update && \
-    apt-get install -y git && \
+    apt-get install -y --no-install-recommends git && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy nanocode module into Python site-packages so it's importable
-COPY nanocode /usr/local/lib/python3.14/site-packages/nanocode
+COPY nanocode /usr/local/lib/python3.13/site-packages/nanocode
 
 # Set working directory
 WORKDIR /workspace

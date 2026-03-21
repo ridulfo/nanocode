@@ -15,7 +15,15 @@ from .providers import RESET, BOLD, DIM, BLUE, CYAN, GREEN, YELLOW, RED
 
 
 def read(args):
-    lines = open(args["path"]).readlines()
+    try:
+        with open(args["path"], "r", encoding="utf-8") as f:
+            lines = f.readlines()
+    except FileNotFoundError:
+        return f"error: file not found: {args['path']}"
+    except PermissionError:
+        return f"error: permission denied: {args['path']}"
+    except Exception as e:
+        return f"error: {e}"
     offset = args.get("offset", 0)
     limit = args.get("limit", len(lines))
     selected = lines[offset : offset + limit]
@@ -23,25 +31,35 @@ def read(args):
 
 
 def write(args):
-    with open(args["path"], "w") as f:
-        f.write(args["content"])
+    try:
+        with open(args["path"], "w", encoding="utf-8") as f:
+            f.write(args["content"])
+    except PermissionError:
+        return f"error: permission denied: {args['path']}"
+    except Exception as e:
+        return f"error: {e}"
     return "ok"
 
 
 def edit(args):
-    text = open(args["path"]).read()
+    try:
+        with open(args["path"], "r", encoding="utf-8") as f:
+            text = f.read()
+    except FileNotFoundError:
+        return f"error: file not found: {args['path']}"
+    except PermissionError:
+        return f"error: permission denied: {args['path']}"
+    except Exception as e:
+        return f"error: {e}"
     old, new = args["old"], args["new"]
 
-    # Detect common mistakes
     if not old or not isinstance(old, str):
         return f"error: 'old' must be a non-empty string, got: {type(old).__name__}"
 
-    # Check if old contains line number formatting from read tool
     if re.match(r'^\s*\d+\|', old) or re.search(r'\n\s*\d+\|', old):
         return "error: 'old' contains line numbers (like '  123| '). Line numbers are only for display - copy the actual text content WITHOUT the line number prefix."
 
     if old not in text:
-        # Show helpful context
         preview = old[:80] + "..." if len(old) > 80 else old
         return f"error: old_string not found in file. Searched for: {repr(preview)}\nTip: Copy the EXACT text from the file (read it first if needed). Don't include line numbers."
 
@@ -49,8 +67,13 @@ def edit(args):
     if not args.get("all") and count > 1:
         return f"error: old_string appears {count} times, must be unique. Add more surrounding lines to make it unique, or use all=true to replace all occurrences."
 
-    with open(args["path"], "w") as f:
-        f.write(text.replace(old, new) if args.get("all") else text.replace(old, new, 1))
+    try:
+        with open(args["path"], "w", encoding="utf-8") as f:
+            f.write(text.replace(old, new) if args.get("all") else text.replace(old, new, 1))
+    except PermissionError:
+        return f"error: permission denied: {args['path']}"
+    except Exception as e:
+        return f"error: {e}"
     return "ok"
 
 
@@ -70,10 +93,11 @@ def grep(args):
     hits = []
     for filepath in globlib.glob(args.get("path", ".") + "/**", recursive=True):
         try:
-            for line_num, line in enumerate(open(filepath), 1):
-                if pattern.search(line):
-                    hits.append(f"{filepath}:{line_num}:{line.rstrip()}")
-        except Exception:
+            with open(filepath, "r", encoding="utf-8") as f:
+                for line_num, line in enumerate(f, 1):
+                    if pattern.search(line):
+                        hits.append(f"{filepath}:{line_num}:{line.rstrip()}")
+        except (FileNotFoundError, PermissionError, UnicodeDecodeError):
             pass
     return "\n".join(hits[:50]) or "none"
 
@@ -85,6 +109,7 @@ def bash(args):
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
+        encoding="utf-8",
     )
     output_lines = []
     try:
@@ -161,7 +186,7 @@ def make_schema():
         required = [k for k, t in params.items() if not t.endswith("?")]
         result.append({"type": "function", "function": {
             "name": name, "description": desc,
-            "parameters": {"type": "object", "properties": props, "required": required},
+            "parameters": {"type": "object", "properties": props, "required": required, "additionalProperties": False},
         }})
     return result
 
