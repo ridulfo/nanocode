@@ -33,7 +33,7 @@ def render_markdown(text):
 class Provider:
     def __init__(self):
         self.model = os.environ.get("LLAMACPP_MODEL", "default")
-        base_url = os.environ.get("LLAMACPP_URL", "http://localhost:8080")
+        base_url = os.environ.get("LLAMACPP_URL", "http://localhost:8079")
         self._base_url = base_url
         self._api_url = base_url.rstrip("/") + "/v1/chat/completions"
 

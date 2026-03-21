@@ -1,0 +1,12 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "nanocode"
+version = "0.1.0"
+description = "A minimal coding agent using llama.cpp for local LLM inference"
+requires-python = ">=3.11"
+
+[project.scripts]
+nanocode = "nanocode:main"
