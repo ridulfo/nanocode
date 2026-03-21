@@ -1,6 +1,6 @@
 # nanocode
 
-Minimal coding agent. Single Python file, zero dependencies, ~270 lines. Uses [Ollama](https://ollama.com) for local LLM inference.
+Minimal coding agent. Single Python file, zero dependencies, ~270 lines. Uses [llama.cpp](https://github.com/ggerganov/llama.cpp) for local LLM inference.
 
 Built using Claude Code, then used to build itself.
 
@@ -15,17 +15,17 @@ Built using Claude Code, then used to build itself.
 
 ## Usage
 
-Requires [Ollama](https://ollama.com) running locally.
+Requires [llama.cpp](https://github.com/ggerganov/llama.cpp) server running locally.
 
 ```bash
-# Uses qwen3 by default
+# Uses default model
 python nanocode.py
 
 # Specify a different model
-OLLAMA_MODEL="llama3.1" python nanocode.py
+LLAMACPP_MODEL="my-model" python nanocode.py
 
-# Custom Ollama URL
-OLLAMA_URL="http://remote-server:11434" python nanocode.py
+# Custom llama.cpp URL
+LLAMACPP_URL="http://remote-server:8080" python nanocode.py
 ```
 
 ### Container Mode (Podman/Docker)
@@ -33,29 +33,29 @@ OLLAMA_URL="http://remote-server:11434" python nanocode.py
 Run nanocode in an isolated container:
 
 ```bash
-# Uses qwen3 by default
-./nanocode-podman
+# Uses default model
+./nanocode-llamacpp
 
 # Specify model and work directory
-OLLAMA_MODEL="llama3.1" ./nanocode-podman ~/dev/project
+LLAMACPP_MODEL="my-model" ./nanocode-llamacpp ~/dev/project
 
-# Custom Ollama URL
-OLLAMA_URL="http://remote-server:11434" ./nanocode-podman
+# Custom llama.cpp URL
+LLAMACPP_URL="http://remote-server:8080" ./nanocode-llamacpp
 
 # Configure git identity
-GIT_USER_NAME="Your Name" GIT_USER_EMAIL="you@example.com" ./nanocode-podman
+GIT_USER_NAME="Your Name" GIT_USER_EMAIL="you@example.com" ./nanocode-llamacpp
 ```
 
 **How it works:**
 - Creates a fresh container for each session
 - Mounts your work directory into the container
-- Accesses host's Ollama server via network
+- Accesses host's llama.cpp server via network
 - Changes and commits persist to the mounted directory
 - Container auto-removes after exit
 
 **Requirements:**
 - Podman or Docker installed (script auto-detects)
-- Ollama running on host (default: `http://localhost:11434`)
+- llama.cpp server running on host (default: `http://localhost:8080`)
 
 ## Commands
 

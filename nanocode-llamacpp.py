@@ -49,7 +49,6 @@ def main():
         "podman", "run", "-it", "--rm",
         "--network", "host",
         "-v", f"{work_dir}:/workspace:z",
-        "-e", f"PROVIDER=llamacpp",
         "-e", f"LLAMACPP_MODEL={os.environ.get('LLAMACPP_MODEL', 'default')}",
         "-e", f"LLAMACPP_URL={os.environ.get('LLAMACPP_URL', 'http://localhost:8079')}",
         "-e", f"GIT_USER_NAME={os.environ.get('GIT_USER_NAME', 'Nanocode Agent')}",
