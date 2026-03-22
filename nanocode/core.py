@@ -319,16 +319,10 @@ def main():
     tools_schema = make_schema()
     print(f"{BOLD}nanocode{RESET} | {DIM}{provider.label} | {os.getcwd()}{RESET}\n")
     messages = []
-    system_prompt = f"""You are a coding agent in a terminal-based assistant. cwd: {os.getcwd()}. Be concise, direct, and friendly. Keep working autonomously using the available tools until the task is fully resolved—do not guess or make up answers. Always read files before modifying them. When exploring the codebase, prefer grep and glob over bash. Briefly tell the user what you're about to do before each action.
 
-CRITICAL - Using the edit tool correctly:
-1. The 'read' tool shows line numbers like "  42| content" - these are DISPLAY ONLY
-2. When using 'edit', the 'old' parameter must contain ONLY the actual file text
-3. NEVER include line number prefixes (like "  42| ") in the 'old' parameter
-4. Copy the exact text after the line number prefix when preparing edit operations
-5. If edit fails, read the file again and copy the exact text more carefully
-
-Fix problems at root causes, not with surface patches. Keep changes minimal, focused, and consistent with existing code style. Do not add comments, type annotations, refactors, or improvements beyond what was asked. If an approach fails, try an alternative instead of repeating the same action. Do not commit or push to git unless explicitly asked. When tests or build commands exist, use them to verify your work."""
+    prompt_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "system-prompt.md")
+    with open(prompt_path) as f:
+        system_prompt = f.read().format(os.getcwd())
 
     while True:
         try:
