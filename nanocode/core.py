@@ -23,7 +23,9 @@ BLUE, CYAN, GREEN, YELLOW, RED = (
 def render_markdown(text):
     text = re.sub(r"\*\*(.+?)\*\*", f"{BOLD}\\1{RESET}", text)
     text = re.sub(r"`([^`]+)`", f"{DIM}\\1{RESET}", text)
-    text = re.sub(r"```(\w*)\n?(.+?)```", f"\n{DIM}```\\1\n\\2```{RESET}\n", text, flags=re.DOTALL)
+    text = re.sub(
+        r"```(\w*)\n?(.+?)```", f"\n{DIM}```\\1\n\\2```{RESET}\n", text, flags=re.DOTALL
+    )
     text = re.sub(r"^- (.+)$", f"{DIM}• \\1{RESET}", text, flags=re.MULTILINE)
     text = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", f"\\1{DIM}(\\2){RESET}", text)
     text = re.sub(r"^#{1,6}\s+(.+)$", f"\n{BOLD}\\1{RESET}\n", text, flags=re.MULTILINE)
@@ -40,24 +42,29 @@ class Provider:
 
     @property
     def label(self):
-        return f"{self.model} (llama.cpp)"
+        return self.model
 
     def call_api(self, messages, system_prompt, tools):
         request = urllib.request.Request(
             self._api_url,
-            data=json.dumps({
-                "model": self.model,
-                "messages": [{"role": "system", "content": system_prompt}] + messages,
-                "tools": tools,
-                "stream": True,
-                "stream_options": {"include_usage": True},
-            }).encode(),
+            data=json.dumps(
+                {
+                    "model": self.model,
+                    "messages": [{"role": "system", "content": system_prompt}]
+                    + messages,
+                    "tools": tools,
+                    "stream": True,
+                    "stream_options": {"include_usage": True},
+                }
+            ).encode(),
             headers={"Content-Type": "application/json"},
         )
         try:
             response = urllib.request.urlopen(request)
         except urllib.error.URLError as e:
-            raise Exception(f"Cannot reach llama.cpp at {self._base_url}. Is the server running? ({e})")
+            raise Exception(
+                f"Cannot reach llama.cpp at {self._base_url}. Is the server running? ({e})"
+            )
 
         content_chunks = []
         tool_calls_map = {}  # index -> partial tool call
@@ -198,7 +205,7 @@ def edit(args):
     if not old or not isinstance(old, str):
         return f"error: 'old' must be a non-empty string, got: {type(old).__name__}"
 
-    if re.match(r'^\s*\d+\|', old) or re.search(r'\n\s*\d+\|', old):
+    if re.match(r"^\s*\d+\|", old) or re.search(r"\n\s*\d+\|", old):
         return "error: 'old' contains line numbers (like '  123| '). Line numbers are only for display - copy the actual text content WITHOUT the line number prefix."
 
     if old not in text:
@@ -211,7 +218,9 @@ def edit(args):
 
     try:
         with open(args["path"], "w", encoding="utf-8") as f:
-            f.write(text.replace(old, new) if args.get("all") else text.replace(old, new, 1))
+            f.write(
+                text.replace(old, new) if args.get("all") else text.replace(old, new, 1)
+            )
     except PermissionError:
         return f"error: permission denied: {args['path']}"
     except Exception as e:
@@ -326,10 +335,21 @@ def make_schema():
             for k, t in params.items()
         }
         required = [k for k, t in params.items() if not t.endswith("?")]
-        result.append({"type": "function", "function": {
-            "name": name, "description": desc,
-            "parameters": {"type": "object", "properties": props, "required": required, "additionalProperties": False},
-        }})
+        result.append(
+            {
+                "type": "function",
+                "function": {
+                    "name": name,
+                    "description": desc,
+                    "parameters": {
+                        "type": "object",
+                        "properties": props,
+                        "required": required,
+                        "additionalProperties": False,
+                    },
+                },
+            }
+        )
     return result
 
 
@@ -344,7 +364,9 @@ def main():
     messages = []
     verbose = False
 
-    prompt_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "system-prompt.md")
+    prompt_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "system-prompt.md"
+    )
     with open(prompt_path) as f:
         system_prompt = f.read().format(os.getcwd())
 
@@ -391,14 +413,22 @@ def main():
                     tool_args = tc["function"]["arguments"]
                     if isinstance(tool_args, str):
                         tool_args = json.loads(tool_args)
-                    arg_preview = str(list(tool_args.values())[0])[:50] if tool_args else ""
+                    arg_preview = (
+                        str(list(tool_args.values())[0])[:50] if tool_args else ""
+                    )
                     print(
                         f"\n{GREEN}⏺ {tool_name.capitalize()}{RESET}({DIM}{arg_preview}{RESET})"
                     )
 
                     result = run_tool(tool_name, tool_args)
                     lines = result.split("\n")
-                    extra = f" ... +{len(lines)-1} lines" if len(lines) > 1 else "..." if len(lines[0]) > 60 else ""
+                    extra = (
+                        f" ... +{len(lines) - 1} lines"
+                        if len(lines) > 1
+                        else "..."
+                        if len(lines[0]) > 60
+                        else ""
+                    )
                     preview = lines[0][:60] + extra
                     print(f"  {DIM}⎿  {preview}{RESET}")
 
@@ -411,7 +441,10 @@ def main():
                     )
 
                 # Store assistant message (content must always be present for llama.cpp)
-                msg = {"role": "assistant", "content": assistant_msg.get("content") or ""}
+                msg = {
+                    "role": "assistant",
+                    "content": assistant_msg.get("content") or "",
+                }
                 if assistant_msg.get("tool_calls"):
                     msg["tool_calls"] = assistant_msg["tool_calls"]
                 messages.append(msg)
