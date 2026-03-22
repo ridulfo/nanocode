@@ -33,6 +33,7 @@ def render_markdown(text):
 class Provider:
     def __init__(self):
         self.model = os.environ.get("LLAMACPP_MODEL", "default")
+        self.verbose = False
         base_url = os.environ.get("LLAMACPP_URL", "http://localhost:8079")
         self._base_url = base_url
         self._api_url = base_url.rstrip("/") + "/v1/chat/completions"
@@ -89,12 +90,30 @@ class Provider:
                 continue
             delta = choices[0].get("delta", {})
 
-            if delta.get("reasoning_content"):
-                thinking_count += len(delta["reasoning_content"].split())
+            # Show verbose debugging information
+            if self.verbose:
+                if delta.get("reasoning_content"):
+                    reasoning_text = delta["reasoning_content"]
+                    thinking_count += len(reasoning_text.split())
+                    in_thinking = True
+                    print(f"{DIM}{reasoning_text}{RESET}", end="", flush=True)
+                elif delta.get("content"):
+                    # Show raw content when verbose for debugging
+                    text = delta["content"]
+                    print(f"{text}", end="", flush=True)
+            elif delta.get("reasoning_content"):
+                # Non-verbose mode: just show token count
+                reasoning_text = delta["reasoning_content"]
+                thinking_count += len(reasoning_text.split())
                 in_thinking = True
-                print(f"\r{DIM}Thinking... ({thinking_count} tokens){RESET}", end="", flush=True)
+                print(
+                    f"\r{DIM}Thinking... ({thinking_count} tokens){RESET}",
+                    end="",
+                    flush=True,
+                )
 
-            if delta.get("content"):
+            # Only process content if not already handled in verbose mode
+            if delta.get("content") and not self.verbose:
                 text = delta["content"]
                 content_chunks.append(text)
                 if not printed_header:
@@ -103,6 +122,10 @@ class Provider:
                     print(f"\n{CYAN}⏺{RESET} ", end="", flush=True)
                     printed_header = True
                 print(render_markdown(text), end="", flush=True)
+            elif delta.get("content"):
+                # In verbose mode, content was already printed above
+                text = delta["content"]
+                content_chunks.append(text)
 
             for tc_delta in delta.get("tool_calls", []):
                 idx = tc_delta.get("index", 0)
@@ -319,6 +342,7 @@ def main():
     tools_schema = make_schema()
     print(f"{BOLD}nanocode{RESET} | {DIM}{provider.label} | {os.getcwd()}{RESET}\n")
     messages = []
+    verbose = False
 
     prompt_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "system-prompt.md")
     with open(prompt_path) as f:
@@ -337,6 +361,12 @@ def main():
                 messages = []
                 print(f"{GREEN}⏺ Cleared conversation{RESET}")
                 continue
+            if user_input == "/verbose":
+                verbose = not verbose
+                provider.verbose = verbose  # Also set provider's verbose flag
+                status = "ON" if verbose else "OFF"
+                print(f"{GREEN}⏺ Verbose mode {status}{RESET}")
+                continue
 
             messages.append({"role": "user", "content": user_input})
 
@@ -353,7 +383,7 @@ def main():
 
                 # Content already printed during streaming
                 if usage:
-                    total_tokens = usage['prompt_tokens'] + usage['completion_tokens']
+                    total_tokens = usage["prompt_tokens"] + usage["completion_tokens"]
                     print(f" {DIM}[{total_tokens} tokens]{RESET}", end="", flush=True)
 
                 for tc in assistant_msg.get("tool_calls", []):
