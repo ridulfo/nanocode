@@ -281,6 +281,70 @@ def bash(args):
     return "".join(output_lines).strip() or "(empty)"
 
 
+# --- Todo system ---
+
+TODO_FILE = os.path.expanduser("~/.nanocode-todos.json")
+
+
+def _load_todos():
+    try:
+        with open(TODO_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {"todos": []}
+
+
+def _save_todos(data):
+    with open(TODO_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+
+
+def read_todos(args):
+    data = _load_todos()
+    if not data["todos"]:
+        return "No todos currently."
+    lines = ["Todo list:"]
+    for i, todo in enumerate(data["todos"], 1):
+        status = (
+            "✓"
+            if todo["status"] == "completed"
+            else "○"
+            if todo["status"] == "pending"
+            else "●"
+        )
+        lines.append(f"{i}. [{status}] {todo['description']}")
+    return "\n".join(lines)
+
+
+def write_todos(args):
+    items = args.get("items", [])
+    if not items:
+        data = _load_todos()
+        data["todos"] = []
+        _save_todos(data)
+        return "Cleared todo list."
+    todos = [{"description": item, "status": "pending"} for item in items]
+    data = {"todos": todos}
+    _save_todos(data)
+    lines = ["Todo list updated:"]
+    for i, item in enumerate(items, 1):
+        lines.append(f"{i}. ○ {item}")
+    return "\n".join(lines)
+
+
+def edit_todo(args):
+    index = args.get("index", 1) - 1
+    status = args.get("status")
+    if status not in ("pending", "in_progress", "completed"):
+        return f"error: status must be 'pending', 'in_progress', or 'completed', got: {status}"
+    data = _load_todos()
+    if not (0 <= index < len(data["todos"])):
+        return f"error: invalid todo index {index + 1}"
+    data["todos"][index]["status"] = status
+    _save_todos(data)
+    return f"Todo {index + 1} marked as {status}"
+
+
 # --- Tool definitions: (description, schema, function) ---
 
 TOOLS = {
@@ -314,6 +378,21 @@ TOOLS = {
         {"cmd": "string"},
         bash,
     ),
+    "read_todos": (
+        "Read the todo list. Returns all todos with their status (pending, in_progress, completed).",
+        {},
+        read_todos,
+    ),
+    "write_todos": (
+        "Write/overwrite the entire todo list. Provide 'items' as a list of todo descriptions.",
+        {"items": "string[]?"},
+        write_todos,
+    ),
+    "edit_todo": (
+        "Edit a todo item. Set status to 'pending', 'in_progress', or 'completed'. Use 'index' (1-based) and 'status'.",
+        {"index": "integer", "status": "string"},
+        edit_todo,
+    ),
 }
 
 
@@ -330,10 +409,19 @@ def run_tool(name, args):
 def make_schema():
     result = []
     for name, (desc, params, _) in TOOLS.items():
-        props = {
-            k: {"type": "integer" if t.rstrip("?") == "number" else t.rstrip("?")}
-            for k, t in params.items()
-        }
+        props = {}
+        for k, t in params.items():
+            base = t.rstrip("?")
+            if base == "string[]":
+                props[k] = {"type": "array", "items": {"type": "string"}}
+            elif base == "number":
+                props[k] = {"type": "number"}
+            elif base == "integer":
+                props[k] = {"type": "integer"}
+            elif base == "boolean":
+                props[k] = {"type": "boolean"}
+            else:
+                props[k] = {"type": base}
         required = [k for k, t in params.items() if not t.endswith("?")]
         result.append(
             {
