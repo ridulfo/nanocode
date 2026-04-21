@@ -39,6 +39,16 @@
               pkgs.bubblewrap
             ];
 
+            postInstall = ''
+              mv $out/bin/nanocode $out/bin/.nanocode-unwrapped
+              cp ${./nanocode-wrapper.sh} $out/bin/nanocode
+              chmod +w $out/bin/nanocode
+              substituteInPlace $out/bin/nanocode \
+                --replace @bwrap@ ${pkgs.bubblewrap}/bin/bwrap \
+                --replace @nanocode@ $out/bin/.nanocode-unwrapped
+              chmod +x $out/bin/nanocode
+            '';
+
             meta = with pkgs.lib; {
               description = "A minimal sandboxed local coding agent";
               homepage = "https://github.com/ridulfo/nanocode";

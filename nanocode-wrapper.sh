@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 WORKSPACE=$(realpath "${1:-.}")
-PYTHON=$(readlink -f "$(which python)")
-
-bwrap \
+exec @bwrap@ \
   --ro-bind /nix/store /nix/store \
   --ro-bind /etc/resolv.conf /etc/resolv.conf \
   --ro-bind /etc/hosts /etc/hosts \
@@ -16,4 +14,4 @@ bwrap \
   --unshare-ipc \
   --die-with-parent \
   --chdir "$WORKSPACE" \
-  "$PYTHON" -m nanocode "$@"
+  @nanocode@ "$@"
