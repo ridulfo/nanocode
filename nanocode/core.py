@@ -542,7 +542,7 @@ def main():
                     if isinstance(tool_args, str):
                         tool_args = json.loads(tool_args)
                     arg_preview = (
-                        str(list(tool_args.values())[0])[:50] if tool_args else ""
+                        str(list(tool_args.values())[0]) if tool_args else ""
                     )
                     print(
                         f"\n{GREEN}⏺ {tool_name.capitalize()}{RESET}({DIM}{arg_preview}{RESET})"
@@ -557,7 +557,7 @@ def main():
                         if len(lines[0]) > 60
                         else ""
                     )
-                    preview = lines[0][:60] + extra
+                    preview = lines[0][:100] + extra
                     print(f"  {DIM}⎿  {preview}{RESET}")
 
                     tool_results.append(
