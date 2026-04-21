@@ -7,6 +7,7 @@ import os
 import re
 import signal
 import subprocess
+import tempfile
 import urllib.error
 import urllib.request
 
@@ -216,14 +217,23 @@ def edit(args):
     if not args.get("all") and count > 1:
         return f"error: old_string appears {count} times, must be unique. Add more surrounding lines to make it unique, or use all=true to replace all occurrences."
 
+    new_text = text.replace(old, new) if args.get("all") else text.replace(old, new, 1)
+
     try:
-        with open(args["path"], "w", encoding="utf-8") as f:
-            f.write(
-                text.replace(old, new) if args.get("all") else text.replace(old, new, 1)
-            )
+        dir_ = os.path.dirname(os.path.abspath(args["path"]))
+        with tempfile.NamedTemporaryFile(
+            "w", encoding="utf-8", dir=dir_, delete=False
+        ) as tmp:
+            tmp.write(new_text)
+            tmp_path = tmp.name
+        os.replace(tmp_path, args["path"])
     except PermissionError:
         return f"error: permission denied: {args['path']}"
     except Exception as e:
+        try:
+            os.unlink(tmp_path)
+        except Exception:
+            pass
         return f"error: {e}"
     return "ok"
 
@@ -242,15 +252,23 @@ def glob(args):
 def grep(args):
     pattern = re.compile(args["pat"])
     hits = []
+    total = 0
     for filepath in globlib.glob(args.get("path", ".") + "/**", recursive=True):
         try:
             with open(filepath, "r", encoding="utf-8") as f:
                 for line_num, line in enumerate(f, 1):
                     if pattern.search(line):
-                        hits.append(f"{filepath}:{line_num}:{line.rstrip()}")
+                        total += 1
+                        if len(hits) < 50:
+                            hits.append(f"{filepath}:{line_num}:{line.rstrip()}")
         except (FileNotFoundError, PermissionError, UnicodeDecodeError):
             pass
-    return "\n".join(hits[:50]) or "none"
+    if not hits:
+        return "none"
+    result = "\n".join(hits)
+    if total > 50:
+        result += f"\n(truncated, {total} matches found — narrow your search)"
+    return result
 
 
 def bash(args):
@@ -320,7 +338,7 @@ def _save_todos(data):
         json.dump(data, f, indent=2)
 
 
-def read_todos(args):
+def read_todos(_args=None):
     data = _load_todos()
     if not data["todos"]:
         return "No todos currently."
@@ -417,17 +435,7 @@ TOOLS = {
 }
 
 
-def run_tool(name, args):
-    try:
-        result = TOOLS[name][2](args)
-        if len(result) > 10000:
-            return f"warning: tool call '{name}' returned too much text ({len(result)} characters, max 10000). Aborting to prevent overwhelming the agent."
-        return result
-    except Exception as err:
-        return f"error: {err}"
-
-
-def make_schema():
+def _make_schema():
     result = []
     for name, (desc, params, _) in TOOLS.items():
         props = {}
@@ -462,16 +470,29 @@ def make_schema():
     return result
 
 
+TOOLS_SCHEMA = _make_schema()
+
+
+def run_tool(name, args):
+    try:
+        result = TOOLS[name][2](args)
+        if len(result) > TOOL_OUTPUT_MAX:
+            truncated = result[:TOOL_OUTPUT_TRUNCATE]
+            omitted = len(result) - TOOL_OUTPUT_TRUNCATE
+            return f"{truncated}\n...(truncated {omitted} chars — use offset/limit or a narrower query)"
+        return result
+    except Exception as err:
+        return f"error: {err}"
+
+
 def separator():
     return f"{DIM}{'─' * min(os.get_terminal_size().columns, 80)}{RESET}"
 
 
 def main():
     provider = Provider()
-    tools_schema = make_schema()
     print(f"{BOLD}nanocode{RESET} | {DIM}{provider.label} | {os.getcwd()}{RESET}\n")
     messages = []
-    verbose = False
 
     prompt_path = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "system-prompt.md"
@@ -493,9 +514,8 @@ def main():
                 print(f"{GREEN}⏺ Cleared conversation{RESET}")
                 continue
             if user_input == "/verbose":
-                verbose = not verbose
-                provider.verbose = verbose  # Also set provider's verbose flag
-                status = "ON" if verbose else "OFF"
+                provider.verbose = not provider.verbose
+                status = "ON" if provider.verbose else "OFF"
                 print(f"{GREEN}⏺ Verbose mode {status}{RESET}")
                 continue
 
@@ -504,7 +524,7 @@ def main():
             # agentic loop: keep calling API until no more tool calls
             while True:
                 try:
-                    response = provider.call_api(messages, system_prompt, tools_schema)
+                    response = provider.call_api(messages, system_prompt, TOOLS_SCHEMA)
                 except KeyboardInterrupt:
                     print(f"\n{YELLOW}⏺ Interrupted{RESET}")
                     break
@@ -512,7 +532,6 @@ def main():
                 usage = response.get("usage")
                 tool_results = []
 
-                # Content already printed during streaming
                 if usage:
                     total_tokens = usage["prompt_tokens"] + usage["completion_tokens"]
                     print(f" {DIM}[{total_tokens} tokens]{RESET}", end="", flush=True)
@@ -549,7 +568,6 @@ def main():
                         }
                     )
 
-                # Store assistant message (content must always be present for llama.cpp)
                 msg = {
                     "role": "assistant",
                     "content": assistant_msg.get("content") or "",
