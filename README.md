@@ -1,10 +1,8 @@
 # nanocode
 
-Minimal coding agent. Single Python file, zero dependencies, ~270 lines. Uses [llama.cpp](https://github.com/ggerganov/llama.cpp) for local LLM inference.
+Minimal coding agent. Uses [llama.cpp](https://github.com/ggerganov/llama.cpp) for local LLM inference.
 
 Built using Claude Code, then used to build itself.
-
-![screenshot](screenshot.png)
 
 ## Features
 
@@ -12,55 +10,75 @@ Built using Claude Code, then used to build itself.
 - Tools: `read`, `write`, `edit`, `glob`, `grep`, `bash`
 - Conversation history
 - Colored terminal output
+- Sandboxed execution with bubblewrap
 
 ## Usage
 
 Requires [llama.cpp](https://github.com/ggerganov/llama.cpp) server running locally.
 
-```bash
-# Uses default model
-python nanocode.py
+### Sandbox Mode
 
-# Specify a different model
-LLAMACPP_MODEL="my-model" python nanocode.py
-
-# Custom llama.cpp URL
-LLAMACPP_URL="http://remote-server:8080" python nanocode.py
-```
-
-### Container Mode (Podman/Docker)
-
-Run nanocode in an isolated container:
+Run nanocode in a sandboxed environment using bubblewrap:
 
 ```bash
 # Uses default model
-./nanocode-llamacpp
+./run-nanocode.sh
 
-# Specify model and work directory
-LLAMACPP_MODEL="my-model" ./nanocode-llamacpp ~/dev/project
+# Specify work directory
+./run-nanocode.sh ~/dev/project
 
-# Custom llama.cpp URL
-LLAMACPP_URL="http://remote-server:8080" ./nanocode-llamacpp
+# Specify model and custom URL
+LLAMACPP_URL="http://remote-server:8079" ./run-nanocode.sh
 
 # Configure git identity
-GIT_USER_NAME="Your Name" GIT_USER_EMAIL="you@example.com" ./nanocode-llamacpp
+GIT_USER_NAME="Your Name" GIT_USER_EMAIL="you@example.com" ./run-nanocode.sh
 ```
 
 **How it works:**
-- Creates a fresh container for each session
-- Mounts your work directory into the container
+- Creates a sandboxed environment using bubblewrap
+- Mounts your work directory with read-write access
 - Accesses host's llama.cpp server via network
 - Changes and commits persist to the mounted directory
-- Container auto-removes after exit
+- Provides process isolation with PID and IPC namespaces
 
 **Requirements:**
-- Podman or Docker installed (script auto-detects)
-- llama.cpp server running on host (default: `http://localhost:8080`)
+- bubblewrap installed
+- llama.cpp server running on host (default: `http://localhost:8079`)
+
+### Nix (Recommended)
+
+Run directly from the flake:
+
+```bash
+nix run github:ridulfo/nanocode
+
+# Specify a work directory
+nix run github:ridulfo/nanocode -- ~/dev/project
+
+# Specify a different model
+nix run github:ridulfo/nanocode
+```
+
+#### Development
+
+Use Nix for development:
+
+```bash
+# Enter development shell
+nix develop
+
+# Build package
+nix build
+
+# Run built package
+nix run .
+```
 
 ## Commands
 
 - `/c` - Clear conversation
 - `/q` or `exit` - Quit
+- `/verbose` to see what the model is thinking
 
 ## Tools
 
