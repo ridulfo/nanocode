@@ -5,6 +5,7 @@ import glob as globlib
 import json
 import os
 import re
+import signal
 import subprocess
 import urllib.error
 import urllib.request
@@ -18,6 +19,10 @@ BLUE, CYAN, GREEN, YELLOW, RED = (
     "\033[33m",
     "\033[31m",
 )
+
+BASH_TIMEOUT = int(os.environ.get("NANOCODE_BASH_TIMEOUT", "120"))
+TOOL_OUTPUT_MAX = 10000
+TOOL_OUTPUT_TRUNCATE = 8000
 
 
 def render_markdown(text):
@@ -254,15 +259,18 @@ def grep(args):
 
 
 def bash(args):
+    cmd = args["cmd"]
     proc = subprocess.Popen(
-        args["cmd"],
+        cmd,
         shell=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
         encoding="utf-8",
+        preexec_fn=os.setsid,
     )
     output_lines = []
+    timed_out = False
     try:
         while True:
             line = proc.stdout.readline()
@@ -271,14 +279,32 @@ def bash(args):
             if line:
                 print(f"  {DIM}│ {line.rstrip()}{RESET}", flush=True)
                 output_lines.append(line)
-        proc.wait(timeout=30)
+        proc.wait(timeout=BASH_TIMEOUT)
     except KeyboardInterrupt:
-        proc.kill()
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                proc.wait()
+        except (ProcessLookupError, OSError):
+            pass
         return "".join(output_lines).strip() or "(interrupted)"
     except subprocess.TimeoutExpired:
-        proc.kill()
-        output_lines.append("\n(timed out after 30s)")
-    return "".join(output_lines).strip() or "(empty)"
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                proc.wait()
+        except (ProcessLookupError, OSError):
+            pass
+        timed_out = True
+        output_lines.append(f"\n(timed out after {BASH_TIMEOUT}s)")
+    output = "".join(output_lines).strip() or "(empty)"
+    return output
 
 
 # --- Todo system ---
