@@ -44,8 +44,13 @@
               cp ${./nanocode-wrapper.sh} $out/bin/nanocode
               chmod +w $out/bin/nanocode
               substituteInPlace $out/bin/nanocode \
-                --replace @bwrap@ ${pkgs.bubblewrap}/bin/bwrap \
-                --replace @nanocode@ $out/bin/.nanocode-unwrapped
+                --replace @bwrap@      ${pkgs.bubblewrap}/bin/bwrap \
+                --replace @nanocode@   $out/bin/.nanocode-unwrapped \
+                --replace @coreutils@  ${pkgs.coreutils} \
+                --replace @git@        ${pkgs.git} \
+                --replace @gnugrep@    ${pkgs.gnugrep} \
+                --replace @gnused@     ${pkgs.gnused} \
+                --replace @findutils@  ${pkgs.findutils}
               chmod +x $out/bin/nanocode
             '';
 

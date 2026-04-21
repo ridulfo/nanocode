@@ -14,4 +14,5 @@ exec @bwrap@ \
   --unshare-ipc \
   --die-with-parent \
   --chdir "$WORKSPACE" \
+  --setenv PATH "@coreutils@/bin:@git@/bin:@gnugrep@/bin:@gnused@/bin:@findutils@/bin" \
   @nanocode@ "$@"
