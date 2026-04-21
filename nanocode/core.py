@@ -39,7 +39,7 @@ def render_markdown(text):
 
 class Provider:
     def __init__(self):
-        self.model = os.environ.get("LLAMACPP_MODEL", "default")
+        self.model = os.environ.get("LLAMACPP_MODEL")
         self.verbose = False
         base_url = os.environ.get("LLAMACPP_URL", "http://localhost:8079")
         self._base_url = base_url
@@ -47,21 +47,21 @@ class Provider:
 
     @property
     def label(self):
-        return self.model
+        return self.model or "(server default)"
 
     def call_api(self, messages, system_prompt, tools):
+        body = {
+            "messages": [{"role": "system", "content": system_prompt}] + messages,
+            "tools": tools,
+            "stream": True,
+            "stream_options": {"include_usage": True},
+        }
+        if self.model:
+            body["model"] = self.model
+
         request = urllib.request.Request(
             self._api_url,
-            data=json.dumps(
-                {
-                    "model": self.model,
-                    "messages": [{"role": "system", "content": system_prompt}]
-                    + messages,
-                    "tools": tools,
-                    "stream": True,
-                    "stream_options": {"include_usage": True},
-                }
-            ).encode(),
+            data=json.dumps(body).encode(),
             headers={"Content-Type": "application/json"},
         )
         try:
@@ -102,7 +102,6 @@ class Provider:
                 continue
             delta = choices[0].get("delta", {})
 
-            # Show verbose debugging information
             if self.verbose:
                 if delta.get("reasoning_content"):
                     reasoning_text = delta["reasoning_content"]
@@ -110,11 +109,9 @@ class Provider:
                     in_thinking = True
                     print(f"{DIM}{reasoning_text}{RESET}", end="", flush=True)
                 elif delta.get("content"):
-                    # Show raw content when verbose for debugging
                     text = delta["content"]
                     print(f"{text}", end="", flush=True)
             elif delta.get("reasoning_content"):
-                # Non-verbose mode: just show token count
                 reasoning_text = delta["reasoning_content"]
                 thinking_count += len(reasoning_text.split())
                 in_thinking = True
@@ -124,7 +121,6 @@ class Provider:
                     flush=True,
                 )
 
-            # Only process content if not already handled in verbose mode
             if delta.get("content") and not self.verbose:
                 text = delta["content"]
                 content_chunks.append(text)
@@ -135,7 +131,6 @@ class Provider:
                     printed_header = True
                 print(render_markdown(text), end="", flush=True)
             elif delta.get("content"):
-                # In verbose mode, content was already printed above
                 text = delta["content"]
                 content_chunks.append(text)
 
